@@ -29,6 +29,7 @@ class EntityTests(unittest.TestCase):
     def test_level_builder_rejects_out_of_bounds_objects(self):
         builder = GameLevelBuilder(ArcadeObjectFactory(), (960, 640))
         builder.add_coin((0, 0))
+        builder.add_hazard((0, 0))
         with self.assertRaises(ValueError):
             builder.build()
 
