@@ -5,6 +5,7 @@ from __future__ import annotations
 import array
 import logging
 import math
+from collections.abc import Callable
 
 import pygame
 
@@ -53,3 +54,15 @@ class PygameSoundAdapter:
             sample = round(5000 * envelope * math.sin(2 * math.pi * frequency * position))
             samples.append(sample)
         return pygame.mixer.Sound(buffer=samples.tobytes())
+
+
+class SoundEffectsProxy:
+    """Prevent sound playback, and mixer initialization, when effects are disabled."""
+
+    def __init__(self, sound: PygameSoundAdapter, is_enabled: Callable[[], bool]) -> None:
+        self._sound = sound
+        self._is_enabled = is_enabled
+
+    def play(self, effect: str) -> None:
+        if self._is_enabled():
+            self._sound.play(effect)

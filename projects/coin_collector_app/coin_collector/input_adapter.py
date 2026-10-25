@@ -14,6 +14,8 @@ class InputFrame:
     movement: tuple[int, int] = (0, 0)
     pressed: frozenset[str] = frozenset()
     quit_requested: bool = False
+    player_two_movement: tuple[int, int] = (0, 0)
+    player_one_movement: tuple[int, int] = (0, 0)
 
 
 class KeyState(Protocol):
@@ -49,4 +51,14 @@ class PygameInputAdapter:
 
         horizontal = int(keys[pygame.K_RIGHT] or keys[pygame.K_d]) - int(keys[pygame.K_LEFT] or keys[pygame.K_a])
         vertical = int(keys[pygame.K_DOWN] or keys[pygame.K_s]) - int(keys[pygame.K_UP] or keys[pygame.K_w])
-        return InputFrame((horizontal, vertical), frozenset(pressed), quit_requested)
+        player_two_horizontal = int(keys[pygame.K_d]) - int(keys[pygame.K_a])
+        player_two_vertical = int(keys[pygame.K_s]) - int(keys[pygame.K_w])
+        player_one_horizontal = int(keys[pygame.K_RIGHT]) - int(keys[pygame.K_LEFT])
+        player_one_vertical = int(keys[pygame.K_DOWN]) - int(keys[pygame.K_UP])
+        return InputFrame(
+            (horizontal, vertical),
+            frozenset(pressed),
+            quit_requested,
+            (player_two_horizontal, player_two_vertical),
+            (player_one_horizontal, player_one_vertical),
+        )

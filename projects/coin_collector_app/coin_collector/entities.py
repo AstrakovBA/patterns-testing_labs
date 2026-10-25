@@ -5,11 +5,29 @@ from __future__ import annotations
 import copy
 import math
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Protocol
 
 import pygame
 
 from coin_collector.input_adapter import InputFrame
 from coin_collector.rendering import DrawingAPI
+
+
+@dataclass(frozen=True)
+class CoinStyle:
+    shadow: tuple[int, int, int]
+    fill: tuple[int, int, int]
+    highlight: tuple[int, int, int]
+
+
+class Collectible(Protocol):
+    rect: pygame.Rect
+    value: int
+
+    def update(self, delta_time: float) -> None: ...
+
+    def draw(self, drawing: DrawingAPI) -> None: ...
 
 
 class GameObject(ABC):
@@ -26,9 +44,15 @@ class Player(GameObject):
     SIZE = (38, 46)
     COLOR = (79, 190, 255)
 
-    def __init__(self, position: tuple[int, int], speed: float = 270.0) -> None:
+    def __init__(
+        self,
+        position: tuple[int, int],
+        speed: float = 270.0,
+        color: tuple[int, int, int] = COLOR,
+    ) -> None:
         super().__init__(position, self.SIZE)
         self.speed = speed
+        self.color = color
         self.animation_time = 0.0
         self.facing = 1
         self.health = 3
@@ -61,8 +85,17 @@ class Player(GameObject):
             return
         bounce = round(math.sin(self.animation_time) * 3) if self.animation_time else 0
         body = self.rect.move(0, bounce)
-        drawing.ellipse(self.COLOR, body)
-        drawing.rectangle((37, 126, 189), pygame.Rect(body.x + 3, body.y + 22, body.width - 6, 24), 8)
+        drawing.ellipse(self.color, body)
+        shade = (
+            max(0, self.color[0] - 18),
+            max(0, self.color[1] - 18),
+            max(0, self.color[2] - 18),
+        )
+        drawing.rectangle(
+            shade,
+            pygame.Rect(body.x + 3, body.y + 22, body.width - 6, 24),
+            8,
+        )
         eye_x = body.centerx + self.facing * 7
         drawing.circle((255, 255, 255), (eye_x, body.y + 16), 5)
         drawing.circle((24, 36, 62), (eye_x + self.facing, body.y + 16), 2)
@@ -73,10 +106,17 @@ class Player(GameObject):
 
 class Coin(GameObject):
     SIZE = (30, 30)
+    DEFAULT_STYLE = CoinStyle((229, 151, 36), (255, 205, 69), (255, 238, 156))
 
-    def __init__(self, position: tuple[int, int], value: int = 10) -> None:
+    def __init__(
+        self,
+        position: tuple[int, int],
+        value: int = 10,
+        style: CoinStyle = DEFAULT_STYLE,
+    ) -> None:
         super().__init__(position, self.SIZE)
         self.value = value
+        self.style = style
         self.animation_time = 0.0
 
     def clone_at(self, position: tuple[int, int]) -> Coin:
@@ -93,10 +133,36 @@ class Coin(GameObject):
         width = max(6, round(22 * abs(math.cos(self.animation_time * 4))))
         coin = pygame.Rect(0, 0, width, 28)
         coin.center = self.rect.center
-        drawing.ellipse((229, 151, 36), self.rect.inflate(4, 4))
-        drawing.ellipse((255, 205, 69), coin)
+        drawing.ellipse(self.style.shadow, self.rect.inflate(4, 4))
+        drawing.ellipse(self.style.fill, coin)
         if width > 12:
-            drawing.line((255, 238, 156), (coin.centerx, coin.y + 6), (coin.centerx, coin.bottom - 6), 2)
+            drawing.line(
+                self.style.highlight,
+                (coin.centerx, coin.y + 6),
+                (coin.centerx, coin.bottom - 6),
+                2,
+            )
+
+
+class BonusCoin:
+    """Decorate a coin with a higher value and a visible bonus ring."""
+
+    def __init__(self, coin: Coin, multiplier: int = 2) -> None:
+        if multiplier < 2:
+            raise ValueError("A bonus coin multiplier must be at least 2")
+        self._coin = coin
+        self.value = coin.value * multiplier
+
+    @property
+    def rect(self) -> pygame.Rect:
+        return self._coin.rect
+
+    def update(self, delta_time: float) -> None:
+        self._coin.update(delta_time)
+
+    def draw(self, drawing: DrawingAPI) -> None:
+        drawing.ellipse((110, 222, 255), self.rect.inflate(12, 12))
+        self._coin.draw(drawing)
 
 
 class Hazard(GameObject):
