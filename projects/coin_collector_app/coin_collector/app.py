@@ -10,6 +10,7 @@ from coin_collector.entities import Coin, Hazard
 from coin_collector.factory import ArcadeObjectFactory
 from coin_collector.input_adapter import InputFrame, PygameInputAdapter
 from coin_collector.level import GameLevel, build_default_level, build_two_player_level
+from coin_collector.level_selection import LevelSelectionMediator, create_level_catalog
 from coin_collector.multiplayer import TwoPlayerMatch
 from coin_collector.rendering import Color, PygameDrawingAPI
 from coin_collector.settings import SettingsManager
@@ -39,6 +40,11 @@ class CoinCollectorApp:
             lambda: self.settings.settings.sound_effects,
         )
         self.factory = ArcadeObjectFactory()
+        self.level_selection = LevelSelectionMediator(
+            create_level_catalog(),
+            self.factory,
+            (WIDTH, HEIGHT),
+        )
         self.screen_name = "menu"
         self.menu_selection = 0
         self.settings_selection = 0
@@ -61,6 +67,9 @@ class CoinCollectorApp:
                 elif self.screen_name == "settings":
                     self._handle_settings(frame)
                     self._draw_settings()
+                elif self.screen_name == "level_selection":
+                    self._handle_level_selection(frame)
+                    self._draw_level_selection()
                 elif self.screen_name == "playing":
                     self._update_game(frame, delta_time)
                     self._draw_game()
@@ -73,9 +82,9 @@ class CoinCollectorApp:
 
     def _handle_menu(self, frame: InputFrame) -> None:
         if "up" in frame.pressed:
-            self.menu_selection = (self.menu_selection - 1) % 4
+            self.menu_selection = (self.menu_selection - 1) % 5
         if "down" in frame.pressed:
-            self.menu_selection = (self.menu_selection + 1) % 4
+            self.menu_selection = (self.menu_selection + 1) % 5
         if "confirm" not in frame.pressed:
             return
         if self.menu_selection == 0:
@@ -83,6 +92,9 @@ class CoinCollectorApp:
         elif self.menu_selection == 1:
             self._start_two_player_game()
         elif self.menu_selection == 2:
+            self.level_selection.begin()
+            self.screen_name = "level_selection"
+        elif self.menu_selection == 3:
             self.screen_name = "settings"
         else:
             self.running = False
@@ -118,6 +130,18 @@ class CoinCollectorApp:
         self.level = self.match.level
         self.message = ""
         self.screen_name = "playing"
+
+    def _handle_level_selection(self, frame: InputFrame) -> None:
+        level = self.level_selection.handle(frame)
+        if level is not None:
+            self.match = None
+            self.level = level
+            self.level.player.health = self.settings.settings.player_health
+            self.score = 0
+            self.message = ""
+            self.screen_name = "playing"
+        elif self.level_selection.back_requested:
+            self.screen_name = "menu"
 
     def _update_game(self, frame: InputFrame, delta_time: float) -> None:
         if self.match is not None:
@@ -172,11 +196,34 @@ class CoinCollectorApp:
         self.drawing.text("СОБИРАТЕЛЬ МОНЕТ", (WIDTH // 2, 165), 64, ACCENT, centered=True)
         self.drawing.text("Собери монеты и избегай опасностей", (WIDTH // 2, 225), 27, TEXT, centered=True)
         self._draw_options(
-            ("Одиночная игра", "Игра на двоих", "Настройки", "Выход"),
+            ("Одиночная игра", "Игра на двоих", "Выбор уровня", "Настройки", "Выход"),
             self.menu_selection,
-            300,
+            270,
         )
         self.drawing.text("Выбор: Enter", (WIDTH // 2, 560), 22, TEXT, centered=True)
+
+    def _draw_level_selection(self) -> None:
+        self._background()
+        self.drawing.text("ВЫБОР УРОВНЯ", (WIDTH // 2, 145), 58, ACCENT, centered=True)
+        self._draw_options(
+            tuple(level.name for level in self.level_selection.levels),
+            self.level_selection.selected_index,
+            260,
+        )
+        self.drawing.text(
+            self.level_selection.selected_level.description,
+            (WIDTH // 2, 475),
+            24,
+            TEXT,
+            centered=True,
+        )
+        self.drawing.text(
+            "↑/↓ — выбрать · Enter — начать · Esc — назад",
+            (WIDTH // 2, 555),
+            22,
+            TEXT,
+            centered=True,
+        )
 
     def _draw_settings(self) -> None:
         self._background()

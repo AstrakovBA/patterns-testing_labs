@@ -1,13 +1,21 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pygame
 
+from coin_collector.app import CoinCollectorApp
 from coin_collector.audio import SoundEffectsProxy
 from coin_collector.entities import BonusCoin, Coin, Hazard, Player
 from coin_collector.factory import ArcadeObjectFactory, CoinStyleFactory, ObjectKind
 from coin_collector.input_adapter import InputFrame, PygameInputAdapter
-from coin_collector.level import GameLevelBuilder, build_two_player_level
+from coin_collector.level import GameLevel, GameLevelBuilder, build_two_player_level
+from coin_collector.level_selection import (
+    LevelSelectionMediator,
+    StartLevelCommand,
+    create_level_catalog,
+    create_level_validation_chain,
+)
 from coin_collector.multiplayer import TwoPlayerMatch
 
 
@@ -150,6 +158,89 @@ class MultiplayerTests(unittest.TestCase):
         proxy.play("coin")
 
         sound.play.assert_called_once_with("coin")
+
+
+class LevelSelectionTests(unittest.TestCase):
+    def setUp(self):
+        self.factory = ArcadeObjectFactory()
+        self.catalog = create_level_catalog()
+        self.selection = LevelSelectionMediator(
+            self.catalog,
+            self.factory,
+            (960, 640),
+        )
+
+    def test_level_iterator_exposes_all_playable_levels(self):
+        levels = list(self.catalog)
+
+        self.assertEqual([level.id for level in levels], ["classic", "corners", "bonus"])
+        for definition in levels:
+            level = definition.build(self.factory, (960, 640))
+            self.assertEqual(len(level.players), 1)
+            self.assertTrue(level.coins)
+
+    def test_start_level_command_builds_the_selected_level(self):
+        definition = self.catalog.get("bonus")
+        command = StartLevelCommand(
+            definition,
+            self.factory,
+            (960, 640),
+            create_level_validation_chain(),
+        )
+
+        level = command.execute()
+
+        self.assertEqual(len(level.players), 1)
+        self.assertEqual(len(level.coins), 4)
+        self.assertEqual(sum(coin.value for coin in level.coins), 50)
+
+    def test_validation_chain_rejects_levels_without_a_player_or_coins(self):
+        bounds = pygame.Rect(32, 82, 896, 526)
+        no_player = GameLevel(bounds, [], [Coin(bounds.center)], [])
+        no_coins = GameLevel(bounds, [Player(bounds.center)], [], [])
+
+        with self.assertRaisesRegex(ValueError, "exactly one player"):
+            create_level_validation_chain().handle(no_player)
+        with self.assertRaisesRegex(ValueError, "at least one coin"):
+            create_level_validation_chain().handle(no_coins)
+
+    def test_mediator_navigates_and_confirms_selection(self):
+        self.selection.handle(InputFrame(pressed=frozenset({"down"})))
+        level = self.selection.handle(InputFrame(pressed=frozenset({"confirm"})))
+
+        self.assertEqual(self.selection.selected_level_id, "corners")
+        self.assertIsNotNone(level)
+        self.assertEqual(len(level.coins), 4)
+
+    def test_menu_selection_starts_the_chosen_single_player_level(self):
+        app = CoinCollectorApp.__new__(CoinCollectorApp)
+        app.menu_selection = 2
+        app.level_selection = self.selection
+        app.screen_name = "menu"
+        app.running = True
+        app.settings = SimpleNamespace(settings=SimpleNamespace(player_health=2))
+        app.match = None
+        app.level = None
+        app.score = 0
+        app.message = ""
+
+        app._handle_menu(InputFrame(pressed=frozenset({"confirm"})))
+        app._handle_level_selection(InputFrame(pressed=frozenset({"down"})))
+        app._handle_level_selection(InputFrame(pressed=frozenset({"confirm"})))
+
+        self.assertEqual(app.screen_name, "playing")
+        self.assertEqual(len(app.level.players), 1)
+        self.assertEqual(len(app.level.coins), 4)
+        self.assertEqual(app.level.player.health, 2)
+
+    def test_cancel_restores_the_selection_memento(self):
+        self.selection.begin()
+        self.selection.handle(InputFrame(pressed=frozenset({"down"})))
+
+        self.assertEqual(self.selection.selected_level_id, "corners")
+        self.assertIsNone(self.selection.handle(InputFrame(pressed=frozenset({"back"}))))
+        self.assertTrue(self.selection.back_requested)
+        self.assertEqual(self.selection.selected_level_id, "classic")
 
 
 if __name__ == "__main__":
