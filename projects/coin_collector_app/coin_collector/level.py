@@ -105,6 +105,38 @@ def build_default_level(factory: GameObjectFactory, size: tuple[int, int]) -> Ga
     return builder.build()
 
 
+def build_corner_level(factory: GameObjectFactory, size: tuple[int, int]) -> GameLevel:
+    bounds = pygame.Rect(32, 82, size[0] - 64, size[1] - 114)
+    builder = GameLevelBuilder(factory, size).set_player_start(bounds.center)
+    for position in (
+        (bounds.left + 80, bounds.top + 70),
+        (bounds.right - 80, bounds.top + 70),
+        (bounds.left + 80, bounds.bottom - 70),
+        (bounds.right - 80, bounds.bottom - 70),
+    ):
+        builder.add_coin(position)
+    builder.add_hazard((bounds.centerx - 120, bounds.centery))
+    builder.add_hazard((bounds.centerx + 120, bounds.centery))
+    return builder.build()
+
+
+def build_bonus_level(factory: GameObjectFactory, size: tuple[int, int]) -> GameLevel:
+    bounds = pygame.Rect(32, 82, size[0] - 64, size[1] - 114)
+    builder = GameLevelBuilder(factory, size).set_player_start(
+        (bounds.left + 90, bounds.centery)
+    )
+    for position in (
+        (bounds.centerx, bounds.top + 75),
+        (bounds.right - 90, bounds.centery),
+        (bounds.centerx, bounds.bottom - 75),
+    ):
+        builder.add_coin(position)
+    builder.add_bonus_coin((bounds.centerx, bounds.centery))
+    builder.add_hazard((bounds.centerx + 125, bounds.top + 130))
+    builder.add_hazard((bounds.centerx + 125, bounds.bottom - 130))
+    return builder.build()
+
+
 def build_two_player_level(factory: GameObjectFactory, size: tuple[int, int]) -> GameLevel:
     bounds = pygame.Rect(32, 82, size[0] - 64, size[1] - 114)
     builder = (
